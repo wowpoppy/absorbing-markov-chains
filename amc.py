@@ -1,245 +1,278 @@
-# Given Absorbing Markov Chain find Absorbing Probabilities
-# From Wikipedia: https://en.wikipedia.org/wiki/Absorbing_Markov_chain
-#
-# AMC is represented in a form:
-# [Q R]
-# [O I]
-# where Q - t-by-t matrix of probabilities of transition between transient states,
-# R - t-by-r matrix of probabilities of transition from transient to absorbing states,
-# O - zero matrix
-# I - identity matrix (in our particular case we're provided with zero matrix)
-#
-# Absorbing Probabilities are determined as:
-# B = (I - Q)^-1 * R
+"""Given Absorbing Markov Chain find Absorbing Probabilities
+From Wikipedia: https://en.wikipedia.org/wiki/Absorbing_Markov_chain
+
+AMC is represented in a form:
+[Q R]
+[O I]
+
+Q - matrix of probabilities of transition between transient states,
+R - matrix of probabilities of transition from transient to absorbing states,
+O - zero matrix
+I - identity matrix (in our particular case we're provided with zero matrix)
+
+Absorbing Probabilities are determined as:
+B = (I - Q)^-1 * R
+"""
 
 
-# get number of transients states
-# assume absorbing states follow transient states w/o interlieveing
-from fractions import Fraction
+import copy
+import fractions
 
-def num_of_transients(m):
-    if len(m) == 0:
-        raise Exception("Can't get transient states of empty matrix")
 
-    for r in range(len(m)):
-        for c in range(len(m[r])):
-            if m[r][c] != 0:
-                # this is not an all-zero row, try next one
-                break
+class EmptyMatrix(Exception):
+    pass
+
+
+class NoAbsorbingStates(Exception):
+    pass
+
+
+class NoTransientStates(Exception):
+    pass
+
+
+class NonSquareMatrix(Exception):
+    pass
+
+
+class DifferentSizedMatrices(Exception):
+    pass
+
+
+class ZeroDeterminant(Exception):
+    pass
+
+
+def number_of_transients(matrix):
+    """Get number of transients states.
+
+    Assume absorbing states follow transient states
+    without interlieveing."""
+
+    if len(matrix) == 0:
+        raise EmptyMatrix
+
+    for r, row in enumerate(matrix):
+        for col in row:
+            if col != 0:
+                break  # This is not an all-zero row, try next one
         else:
-            # has just finished looping over an empty row (i.e. w/o `break`)
-            return r
-    # reached end of table and didn't encounter all-zero row - no absorbing states
-    raise Exception("Not a valid AMC matrix: no absorbing (terminal) states")
+            return r  # Has just finished looping over an empty row
+
+    # Reached end of table and didn't encounter all-zero row
+    raise NoAbsorbingStates
 
 
-# decompose input matrix `m` on Q (t-by-t) and R (t-by-r) components
-# `t` is the number of transient states
-def decompose(m):
-    t = num_of_transients(m)
-    if t == 0:
-        raise Exception("No transient states. At least initial state is needed.")
+def decompose(matrix):
+    """Decompose input matrix on Q and R components."""
 
-    Q = []
-    for r in range(t):
-        qRow = []
-        for c in range(t):
-            qRow.append(m[r][c])
-        Q.append(qRow)
-    if Q == []:
-        raise Exception("Not a valid AMC matrix: no transient states")
+    transients = number_of_transients(matrix)
 
-    R = []
-    for r in range(t):
-        rRow = []
-        for c in range(t, len(m[r])):
-            rRow.append(m[r][c])
-        R.append(rRow)
-    if R == []:
-        raise Exception("Not a valid AMC matrix: missing absorbing states")
-    return Q, R
+    if transients == 0:
+        raise NoTransientStates
 
-# return Identity matrix of size `t`
-def identity(t):
-    m = []
-    for i in range(t):
-        r = []
-        for j in range(t):
-            r.append(int(i == j))
-        m.append(r)
-    return m
+    q_matrix = [matrix[i][:transients] for i in range(transients)]
+    r_matrix = [matrix[i][transients:] for i in range(transients)]
 
-# check if the matrix is zero
-def isZero(m):
-    for r in range(len(m)):
-        for c in range(len(m[r])):
-            if m[r][c] != 0:
+    if q_matrix == []:
+        raise NoTransientStates
+
+    if r_matrix == []:
+        raise NoAbsorbingStates
+
+    return q_matrix, r_matrix
+
+
+def identity(size):
+    """Return identity matrix of given size."""
+
+    matrix = []
+
+    for i in range(size):
+        row = []
+
+        for j in range(size):
+            row.append(int(i == j))
+
+        matrix.append(row)
+
+    return matrix
+
+
+def is_zero(matrix):
+    """Check if the matrix is zero."""
+
+    for row in matrix:
+        for col in row:
+            if col != 0:
                 return False
+
     return True
 
 
-# swap i,j rows/columns of a square matrix `m`
-def swap(m, i, j):
-    n = []
-    s = len(m)
+def swap(matrix, i, j):
+    """Swap i, j rows/columns of a square matrix."""
 
-    if s != len(m[0]):
-        raise Exception("Cannot swap non-square matrix")
+    swapped = copy.deepcopy(matrix)
+    swapped[i], swapped[j] = swapped[j], swapped[i]
 
-    if i == j:
-        # no need to swap
-        return m
+    for row in swapped:
+        row[i], row[j] = row[j], row[i]
 
-    for r in range(s):
-        nRow = []
-        tmpRow = m[r]
-        if r == i:
-            tmpRow = m[j]
-        if r == j:
-            tmpRow = m[i]
-        for c in range(s):
-            tmpEl = tmpRow[c]
-            if c == i:
-                tmpEl = tmpRow[j]
-            if c == j:
-                tmpEl = tmpRow[i]
-            nRow.append(tmpEl)
-        n.append(nRow)
-    return n
+    return swapped
 
-# reorganize matrix so zero-rows go last (preserving zero rows order)
-def sort(m):
-    size = len(m)
 
+def sort_matrix(matrix):
+    """Reorder matrix so zero-rows go last."""
+
+    size = len(matrix)
     zero_row = -1
+
     for r in range(size):
-        sum = 0
+        row_sum = 0
+
         for c in range(size):
-            sum += m[r][c]
-        if sum == 0:
-            # we have found all-zero row, remember it
-            zero_row = r
-        if sum != 0 and zero_row > -1:
-            # we have found non-zero row after all-zero row - swap these rows
-            n = swap(m, r, zero_row)
-            # and repeat from the begining
-            return sort(n)
-    #nothing to sort, return
-    return m
+            row_sum += matrix[r][c]
 
-# normalize matrix `m`
-def normalize(m, use_fractions=False ):
-    n = []
-    for r in range(len(m)):
-        sum = 0
-        cols = len(m[r])
-        for c in range(cols):
-            sum += m[r][c]
+        if row_sum == 0:
+            zero_row = r  # Save the found zero-row
+        elif row_sum != 0 and zero_row > -1:
+            # We have found non-zero row after all-zero row:
+            # swap these rows and repeat from the begining.
 
-        nRow = []
+            sorted_matrix = swap(matrix, r, zero_row)
+            return sort_matrix(sorted_matrix)
 
-        if sum == 0:
-            # all-zero row
-            nRow = m[r]
-        else:
-            for c in range(cols):
-                # FIXME it's strange but python 2.7 does not automatically convert decimals to floats
-                if use_fractions:
-                    nRow.append(Fraction(m[r][c], sum))
-                else:
-                    nRow.append(float(m[r][c])/sum)
-        n.append(nRow)
-    return n
+    return matrix  # Nothing to sort, return original matrix
 
-# subtract two matrices
-def subtract(i, q):
-    if len(i) != len(i[0]) or len(q) != len(q[0]):
-        raise Exception("non-square matrices")
 
-    if len(i) != len(q) or len(i[0]) != len(q[0]):
-        raise Exception("Cannot subtract matrices of different sizes")
+def normalize(matrix, use_fractions=False):
+    """Normalize matrix."""
 
-    s = []
-    for r in range(len(i)):
-        sRow = []
-        for c in range(len(i[r])):
-            sRow.append(i[r][c] - q[r][c])
-        s.append(sRow)
-    return s
+    normalized = copy.deepcopy(matrix)
 
-# multiply two matrices
-def multiply(a, b):
-    if a == [] or b == []:
-        raise Exception("Cannot multiply empty matrices")
+    for r, row in enumerate(matrix):
+        row_sum = sum(row) or 1
 
-    if len(a[0]) != len(b):
-        raise Exception("Cannot multiply matrices of incompatible sizes")
-
-    m = []
-    rows = len(a)
-    cols = len(b[0])
-    iters = len(a[0])
-
-    for r in range(rows):
-        mRow = []
-        for c in range(cols):
-            sum = 0
-            for i in range(iters):
-                sum += a[r][i]*b[i][c]
-            mRow.append(sum)
-        m.append(mRow)
-    return m
-
-# transpose matrix
-def transposeMatrix(m):
-    t = []
-    for r in range(len(m)):
-        tRow = []
-        for c in range(len(m[r])):
-            if c == r:
-                tRow.append(m[r][c])
+        for c, col in enumerate(row):
+            if use_fractions:
+                normalized[r][c] = fractions.Fraction(col, row_sum)
             else:
-                tRow.append(m[c][r])
-        t.append(tRow)
-    return t
+                normalized[r][c] = float(col) / row_sum
 
-def getMatrixMinor(m,i,j):
-    return [row[:j] + row[j+1:] for row in (m[:i]+m[i+1:])]
+    return normalized
 
-# matrix determinant
-def getMatrixDeternminant(m):
-    #base case for 2x2 matrix
-    if len(m) == 2:
-        return m[0][0]*m[1][1]-m[0][1]*m[1][0]
 
-    d = 0
-    for c in range(len(m)):
-        d += ((-1)**c)*m[0][c]*getMatrixDeternminant(getMatrixMinor(m,0,c))
+def subtract(matrix_a, matrix_b):
+    """Subtract two matrices."""
 
-    return d
+    if len(matrix_a) != len(matrix_a[0]) or len(matrix_b) != len(matrix_b[0]):
+        raise NonSquareMatrix
 
-# matrix inversion
-def getMatrixInverse(m):
-    d = getMatrixDeternminant(m)
+    if len(matrix_a) != len(matrix_b):
+        raise DifferentSizedMatrices
 
-    if d == 0:
-        raise Exception("Cannot get inverse of matrix with zero determinant")
+    subtracted_matrix = []
 
-    #special case for 2x2 matrix:
-    if len(m) == 2:
-        return [[m[1][1]/d, -1*m[0][1]/d],
-                [-1*m[1][0]/d, m[0][0]/d]]
+    for r, row in enumerate(matrix_a):
+        subtracted_row = []
 
-    #find matrix of cofactors
+        for c, col in enumerate(row):
+            subtracted_row.append(col - matrix_b[r][c])
+
+        subtracted_matrix.append(subtracted_row)
+
+    return subtracted_matrix
+
+
+def multiply(matrix_a, matrix_b):
+    """Multiply two matrices."""
+
+    if matrix_a == [] or matrix_b == []:
+        raise EmptyMatrix
+
+    if len(matrix_a[0]) != len(matrix_b):
+        raise DifferentSizedMatrices
+
+    multiplied_matrix = []
+
+    cols = len(matrix_b[0])
+    iters = len(matrix_a[0])
+
+    for r, row in enumerate(matrix_a):
+        multiplied_row = []
+
+        for c in range(cols):
+            col_sum = 0
+
+            for i in range(iters):
+                col_sum += row[i] * matrix_b[i][c]
+
+            multiplied_row.append(col_sum)
+
+        multiplied_matrix.append(multiplied_row)
+
+    return multiplied_matrix
+
+
+def transposeMatrix(matrix):
+    """Transpose matrix."""
+
+    return [list(row) for row in zip(*matrix)]
+
+
+def get_matrix_minor(matrix, i, j):
+    return [row[:j] + row[j + 1:] for row in (matrix[:i] + matrix[i + 1:])]
+
+
+def get_matrix_determinant(matrix):
+    """Get matrix determinant."""
+
+    # Base case for 2x2 matrix
+    if len(matrix) == 2:
+        return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
+
+    determinant = 0
+
+    for c in range(len(matrix)):
+        determinant += ((-1) ** c) * matrix[0][c] * get_matrix_determinant(
+            get_matrix_minor(matrix, 0, c))
+
+    return determinant
+
+
+def get_matrix_inverse(matrix):
+    """Get matrix inversion."""
+
+    determinant = get_matrix_determinant(matrix)
+
+    if determinant == 0:
+        raise ZeroDeterminant
+
+    # Special case for 2x2 matrix
+    if len(matrix) == 2:
+        return [
+            [matrix[1][1] / determinant, -1 * matrix[0][1] / determinant],
+            [-1 * matrix[1][0] / determinant, matrix[0][0] / determinant],
+        ]
+
+    # Find matrix of cofactors
     cofactors = []
-    for r in range(len(m)):
+
+    for r in range(len(matrix)):
         cofactorRow = []
-        for c in range(len(m)):
-            minor = getMatrixMinor(m,r,c)
-            cofactorRow.append(((-1)**(r+c)) * getMatrixDeternminant(minor))
+
+        for c in range(len(matrix)):
+            minor = get_matrix_minor(matrix, r, c)
+            cofactorRow.append(
+                ((-1) ** (r + c)) * get_matrix_determinant(minor))
+
         cofactors.append(cofactorRow)
+
     cofactors = transposeMatrix(cofactors)
+
     for r in range(len(cofactors)):
         for c in range(len(cofactors)):
-            cofactors[r][c] = cofactors[r][c]/d
+            cofactors[r][c] = cofactors[r][c] / determinant
+
     return cofactors

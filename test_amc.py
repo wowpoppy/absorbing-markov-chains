@@ -25,11 +25,11 @@ class AmcTests(unittest.TestCase):
     def test_sort(self):
         m = [[0,0],[0,0]]
         r = [[0,0],[0,0]]
-        self.assertTrue(amc.sort(m) == r)
+        self.assertTrue(amc.sort_matrix(m) == r)
 
         m = [[0,0], [1,2]]
         r = [[2,1], [0,0]]
-        self.assertTrue(amc.sort(m) == r)
+        self.assertTrue(amc.sort_matrix(m) == r)
 
         m = [[1,2,3],
              [0,0,0],
@@ -37,7 +37,7 @@ class AmcTests(unittest.TestCase):
         r = [[1,3,2],
              [3,1,2],
              [0,0,0]]
-        self.assertTrue(amc.sort(m) == r)
+        self.assertTrue(amc.sort_matrix(m) == r)
 
         m = [[1,1,1,1], #s0
              [0,0,0,0], #s1
@@ -47,17 +47,17 @@ class AmcTests(unittest.TestCase):
              [1,4,2,3], #s3
              [0,0,0,0], #s1
              [0,0,0,0]] #s2
-        self.assertTrue(amc.sort(m) == r)
+        self.assertTrue(amc.sort_matrix(m) == r)
 
     @staticmethod
     def calculate_b(m,use_fractions=False):
         # B = (I-Q)^-1 * R
-        m = amc.sort(m)
+        m = amc.sort_matrix(m)
         n = amc.normalize(m,use_fractions=use_fractions)
         (q, r) = amc.decompose(n)
         i = amc.identity(len(q))
         s = amc.subtract(i, q)
-        v = amc.getMatrixInverse(s)
+        v = amc.get_matrix_inverse(s)
         b = amc.multiply(v, r)
         return b
 
